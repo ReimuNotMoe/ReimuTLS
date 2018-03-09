@@ -17,7 +17,7 @@
 */
 
 #include <cassert>
-#include "../ReimuTLS.hpp"
+#include "../../ReimuTLS.hpp"
 
 int main(int argc, char **argv) {
 	if (argc < 2) {
@@ -28,38 +28,49 @@ int main(int argc, char **argv) {
 	assert(fd > 0);
 //	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 	ReimuTLS rt;
-	rt.Init(MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_DATAGRAM, MBEDTLS_SSL_VERIFY_OPTIONAL);
+	rt.Init(MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_VERIFY_OPTIONAL);
 	rt.SSLConfDbg();
-	rt.SetIOTarget_FD(fd);
+	rt.IOSetTargetFD(fd);
 	assert(rt.ParseCertData((const unsigned char *)mbedtls_test_cas_pem, mbedtls_test_cas_pem_len) == 0);
 	rt.SSLConfigCAChain();
 	assert(rt.SSLSetup() == 0);
-	rt.SSLSetTimerCb();
+//	rt.SSLSetTimerCb();
 
 	int ret;
-	printf("Start handshake on %s\n", argv[1]);
+	fprintf(stderr, "Start handshake on %s\n", argv[1]);
+
+//	rt.IODelay = 2 * 1000;
+
+//	rt.SetIODelayByLinkSpeed(9600);
+//	rt.SSLConfHandshakeTimeout(10*1000, 80*1000);
 
 	do {
 		ret = rt.SSLHandShake();
-		printf("SSLHandShake() returned %d\n", ret);
+		fprintf(stderr, "SSLHandShake() returned %d\n", ret);
 	} while ( ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE );
+
 
 	if (ret != 0) {
 		return 2;
 	}
 
+	sleep(1);
+
 	unsigned char buf[512];
+
 
 	do {
 		ret = rt.SSLRead(buf, 512);
-		printf("SSLRead() returned %d\n", ret);
-	} while( ret == MBEDTLS_ERR_SSL_WANT_READ ||
-		 ret == MBEDTLS_ERR_SSL_WANT_WRITE );
+		fprintf(stderr, "SSLRead() returned %d\n", ret);
 
-	if (ret > 0) {
-		write(STDOUT_FILENO, buf, (size_t)ret);
-		write(STDOUT_FILENO, "\n", 1);
-	}
+		if (ret > 0) {
+			write(STDOUT_FILENO, buf, (size_t)ret);
+//			write(STDOUT_FILENO, "\n", 1);
+		}
 
-	sleep(30);
+	} while(1);
+
+
+
+//	sleep(30);
 }

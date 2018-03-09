@@ -27,6 +27,8 @@ public:
     int FD_Target = -1;
     int FD_Pipe[2] = {-1};
 
+    size_t BadPackets = 0;
+
     ReimuTLS() = default;
     ~ReimuTLS();
 
@@ -50,7 +52,9 @@ public:
     void InitTimerContext();
     void DestroyTimerContext();
 
-    void SetIOTarget_FD(int fd);
+    void IOSetTargetFD(int fd);
+//    void IOSetReadFunc(int id);
+
 
     int ParseCertData(const unsigned char *cert_data, size_t len);
     int ParseCertFile(const char *path_file);
@@ -77,6 +81,7 @@ public:
     void SSLConfDTLSCookies();
     void SSLConfDbg(void(*f_dbg)(void *, int, const char *, int, const char *), void *p_dbg);
     void SSLConfDbg();
+    void SSLConfHandshakeTimeout(uint32_t min, uint32_t max);
     int SSLCookieSetup(int(*f_rng)(void *, unsigned char *, size_t), void *p_rng);
     int SSLCookieSetup();
     int SSLSetup();
@@ -96,6 +101,11 @@ public:
 
     int CreatePipe();
 
+    unsigned int IODelay = 0; // usec (microsecond)
+    unsigned int IOSpeed = 0; // usecs / 1 byte
+
+    int SetIODelayByLinkSpeed(int bps, int guard_interval=200); // usec (microsecond)
+
 private:
 
     bool Inited = 0;
@@ -110,12 +120,22 @@ private:
     mbedtls_timing_delay_context *TimerContext = NULL;
 
     static void *builtin_pipe_thread(void *userp);
+
+
+    static int timed_read(int fd, void *buf, size_t len, unsigned int usecs);
+
     static int builtin_callback_fd_read(void *userp, unsigned char *buf, size_t len);
     static int builtin_callback_fd_read_timeout(void *ctx, unsigned char *buf, size_t len, uint32_t timeout);
     static int builtin_callback_fd_write(void *userp, const unsigned char *buf, size_t len);
     static int builtin_callback_fd_would_block(ReimuTLS *ctx);
 
+    ssize_t (*read_func)(int fd, void *buf, size_t len) = read;
+    static ssize_t timed_read_wrapper(int fd, void *buf, size_t len);
+
     static void my_debug(void *ctx, int level, const char *file, int line, const char *str);
+
+    static uint16_t crc16(const uint8_t *data, uint16_t size);
+    static bool crc16_verify(const uint8_t *data, uint16_t size);
 
 };
 

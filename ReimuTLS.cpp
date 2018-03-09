@@ -172,3 +172,73 @@ ReimuTLS::~ReimuTLS() {
 	DestroySSLContext();
 	DestroyTimerContext();
 }
+
+int ReimuTLS::SetIODelayByLinkSpeed(int bps, int guard_interval) {
+	IODelay = 1200;
+	printf("IODelay: %d\n", IODelay);
+	return IODelay;
+}
+
+uint16_t ReimuTLS::crc16(const uint8_t *data, uint16_t size) {
+	const uint16_t CRC16 = 0x8005;
+
+	uint16_t out = 0;
+	int bits_read = 0, bit_flag;
+
+	/* Sanity check: */
+	if(data == NULL)
+		return 0;
+
+	while (size > 0) {
+		bit_flag = out >> 15;
+
+		/* Get next bit: */
+		out <<= 1;
+		out |= (*data >> bits_read) & 1; // item a) work from the least significant bits
+
+		/* Increment bit counter: */
+		bits_read++;
+		if(bits_read > 7) {
+			bits_read = 0;
+			data++;
+			size--;
+		}
+
+		/* Cycle check: */
+		if (bit_flag)
+			out ^= CRC16;
+
+	}
+
+	// item b) "push out" the last 16 bits
+	int i;
+	for (i = 0; i < 16; ++i) {
+		bit_flag = out >> 15;
+		out <<= 1;
+		if (bit_flag)
+			out ^= CRC16;
+	}
+
+	// item c) reverse the bits
+	uint16_t crc = 0;
+	i = 0x8000;
+	int j = 0x0001;
+	for (; i != 0; i >>=1, j <<= 1) {
+		if (i & out) crc |= j;
+	}
+
+	return crc;
+}
+
+bool ReimuTLS::crc16_verify(const uint8_t *data, uint16_t size) {
+	if (size < 3)
+		return false;
+
+	uint16_t crc16_this = crc16(data, size-2);
+	uint16_t crc16_good;
+	memcpy(&crc16_good, data+size-2, 2);
+
+	return crc16_this == crc16_good;
+}
+
+

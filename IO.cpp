@@ -16,26 +16,26 @@
     along with ReimuTLS.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <sys/time.h>
 #include "ReimuTLS.hpp"
 
-void ReimuTLS::SetIOTarget_FD(int fd) {
+void ReimuTLS::IOSetTargetFD(int fd) {
 	FD_Target = fd;
 	SSLSetBIO();
 }
 
-int timed_read(int fd, void *buf, size_t len, size_t usecs) { // ms * 1000
+int ReimuTLS::timed_read(int fd, void *buf, size_t len, unsigned int usecs) { // ms * 1000
 	fd_set fds;
-	FD_ZERO(&fds);
-	FD_SET(fd, &fds);
-
-	struct timeval tv {
-		.tv_sec = 0
-	};
-
-
+	struct timeval tv;
 	int rc_select;
 	ssize_t rc_read;
-	size_t read_total = 0;
+	size_t read_total;
+
+begin:
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	tv.tv_sec = 0;
+	read_total = 0;
 
 	while (1) {
 		tv.tv_usec = usecs;
@@ -50,6 +50,8 @@ int timed_read(int fd, void *buf, size_t len, size_t usecs) { // ms * 1000
 //			fprintf(stderr, "read: %zd\n", rc_read);
 			if (rc_read > 0) {
 				read_total += rc_read;
+				if (read_total == len)
+					goto ret;
 			} else if (rc_read == 0) {
 				goto ret;
 			} else {
@@ -63,18 +65,28 @@ int timed_read(int fd, void *buf, size_t len, size_t usecs) { // ms * 1000
 
 
 ret:
-//	fprintf(stderr, "read_total: %zu\n", read_total);
-	return (int)read_total;
+	fprintf(stderr, "read_total: %zu/%zu\n", read_total, len);
+	return (int)(read_total);
+}
+
+ssize_t ReimuTLS::timed_read_wrapper(int fd, void *buf, size_t len) {
+	return timed_read(fd, buf, len, 2 * 1000);
 }
 
 int ReimuTLS::builtin_callback_fd_read(void *userp, unsigned char *buf, size_t len) {
 	int ret;
-	int fd = ((ReimuTLS *)userp)->FD_Target;
+	auto ctx = (ReimuTLS *)userp;
+	int fd = ctx->FD_Target;
 
 	if (fd < 0)
 		return MBEDTLS_ERR_NET_INVALID_CONTEXT;
 
-	ret = (int)timed_read(fd, buf, len, 2 * 1000);
+	if (ctx->IODelay)
+		ret = timed_read(fd, buf, len, ctx->IODelay);
+	else
+		ret = (int)read(fd, buf, len);
+
+	fprintf(stderr, "fd_read: %d\n", ret);
 
 	if (ret < 0) {
 		if (builtin_callback_fd_would_block((ReimuTLS *)userp) != 0)
@@ -125,15 +137,37 @@ int ReimuTLS::builtin_callback_fd_read_timeout(void *ctx, unsigned char *buf, si
 }
 
 int ReimuTLS::builtin_callback_fd_write(void *userp, const unsigned char *buf, size_t len) {
-	int ret;
-	int fd = ((ReimuTLS *) userp)->FD_Target;
+	int rc_write, rc_write_cksum;
+	auto ctx = (ReimuTLS *)userp;
+	int fd = ctx->FD_Target;
 
 	if (fd < 0)
 		return MBEDTLS_ERR_NET_INVALID_CONTEXT;
 
-	ret = (int)write(fd, buf, len);
+//	auto cksum = crc16(buf, len);
+//
+//	timeval ts_write_start;
+//	gettimeofday(&ts_write_start, NULL);
 
-	if (ret < 0) {
+	rc_write = (int)write(fd, buf, len);
+//	rc_write_cksum = (int)write(fd, &cksum, 2);
+
+//	timeval ts_write_end;
+//	gettimeofday(&ts_write_end, NULL);
+//
+//	timeval ts_write_diff;
+//	timersub(&ts_write_start, &ts_write_end, &ts_write_diff);
+
+	fprintf(stderr, "fd_write: %d (%d)\n", rc_write, rc_write_cksum);
+
+//	auto sleeptime = ctx->IODelay + (ctx->IOSpeed*(len+2)-(ts_write_diff.tv_usec+ts_write_diff.tv_sec*1000000));
+//	fprintf(stderr, "sleeping %ld usecs\n", sleeptime);
+
+	if (ctx->IODelay)
+		usleep(409600);
+
+
+	if (rc_write < 0) {
 		if (builtin_callback_fd_would_block((ReimuTLS *)userp) != 0)
 			return MBEDTLS_ERR_SSL_WANT_WRITE;
 
@@ -147,7 +181,7 @@ int ReimuTLS::builtin_callback_fd_write(void *userp, const unsigned char *buf, s
 		return MBEDTLS_ERR_NET_SEND_FAILED;
 	}
 
-	return ret;
+	return rc_write;
 }
 
 int ReimuTLS::builtin_callback_fd_would_block(ReimuTLS *ctx) {

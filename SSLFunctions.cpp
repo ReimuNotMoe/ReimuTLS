@@ -138,6 +138,10 @@ void ReimuTLS::SSLConfDTLSCookies() {
 	SSLConfDTLSCookies(mbedtls_ssl_cookie_write, mbedtls_ssl_cookie_check, CookieContext);
 }
 
+void ReimuTLS::SSLConfHandshakeTimeout(uint32_t min, uint32_t max) {
+	mbedtls_ssl_conf_handshake_timeout(SSLConfig, min, max);
+}
+
 void
 ReimuTLS::SSLSetTimerCb(void *p_timer, void (*f_set_timer)(void *, uint32_t, uint32_t), int (*f_get_timer)(void *)) {
 	mbedtls_ssl_set_timer_cb(SSLContext, p_timer, f_set_timer, f_get_timer);
@@ -160,6 +164,15 @@ void ReimuTLS::my_debug(void *ctx, int level, const char *file, int line, const 
 	fprintf((FILE *)ctx, "%s:%04d: %s", file, line, str);
 	fflush((FILE *)ctx);
 }
+
+//void ReimuTLS::IOSetReadFunc(int id) {
+//	if (id)
+//		read_func = timed_read_wrapper;
+//	else
+//		read_func = read;
+//}
+//
+//
 
 
 
